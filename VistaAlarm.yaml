@@ -352,10 +352,11 @@ text_sensor:
     id_code: ln2_1
 
 # zone status messages bypas/open/alarm
+# this is only "extended" status zones
 # zone status id code = zs
-  - platform: template
-    name: "Zone Status (zs)"
-    id_code: zs
+#  - platform: template
+#    name: "Zone Status"
+#    id_code: zs
 
 # system beeps
 # beeps id code = bp_ + partition number
