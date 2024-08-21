@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public
 License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-Modified for 4800 8E2 
+Modified for 4800 8E2
 */
 
 #pragma once
@@ -61,7 +61,7 @@ class SoftwareSerial: public Stream {
         begin(baud, SWSERIAL_8E2);
     }
     void begin(int32_t baud, SoftwareSerialConfig config);
-    void setConfig(int32_t baud, SoftwareSerialConfig config);    
+    void setConfig(int32_t baud, SoftwareSerialConfig config);
     void setBaud(int32_t baud);
     // Transmit control pin
     void setTransmitEnablePin(int transmitEnablePin);
@@ -92,7 +92,7 @@ class SoftwareSerial: public Stream {
     uint8_t checkParity(uint8_t b);
 
     void rxRead();
-    
+
     int bitsAvailable();
 
     void end();
@@ -100,8 +100,8 @@ class SoftwareSerial: public Stream {
     bool m_parity = true;;
     bool isValidGPIOpin(int pin);
     bool debug;
-    
-    private: 
+
+    private:
     uint32_t m_periodStart;
     uint32_t m_periodDuration;
     bool parityEven(uint8_t byte) {

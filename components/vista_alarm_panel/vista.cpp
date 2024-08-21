@@ -141,15 +141,15 @@ void Vista::onStatus(char cbuf[], int * idx) {
 
 void Vista::onDisplay(char cbuf[], int * idx) {
   // Byte 0 = F7
-  // Bytes 1,2,3,4 are the keypad address masks 
+  // Bytes 1,2,3,4 are the keypad address masks
   // 5th byte represents zone
   // 6th beeps/night mode
-  // 7th various system statuses 
-  // 8th various system statuses 
+  // 7th various system statuses
+  // 8th various system statuses
   // 9th byte Programming mode = 0x01
   // 10th byte prompt position in the display message of the expected input
 
-  
+
   statusFlags.keypad[0] = cbuf[1]; //0 to 7
 
   statusFlags.keypad[1] = cbuf[2]; //8 to 15
@@ -157,7 +157,7 @@ void Vista::onDisplay(char cbuf[], int * idx) {
   statusFlags.keypad[2] = cbuf[3]; //16 - 23
 
   statusFlags.keypad[3] = cbuf[4] & 0x0f; //24 - 27.
-  
+
   statusFlags.armed = ((cbuf[4] & 0x10) > 0);
 
   statusFlags.zone = (int) toDec(cbuf[5]);
@@ -167,9 +167,9 @@ void Vista::onDisplay(char cbuf[], int * idx) {
   statusFlags.fire = ((cbuf[7] & BIT_MASK_BYTE2_FIRE) > 0);
   statusFlags.systemFlag = ((cbuf[7] & BIT_MASK_BYTE2_SYSTEM_FLAG) > 0);
   statusFlags.ready = ((cbuf[7] & BIT_MASK_BYTE2_READY) > 0);
-  
 
-  statusFlags.night = ((cbuf[6] & BIT_MASK_BYTE1_NIGHT) > 0);   
+
+  statusFlags.night = ((cbuf[6] & BIT_MASK_BYTE1_NIGHT) > 0);
   statusFlags.armedStay = ((cbuf[7] & BIT_MASK_BYTE2_ARMED_HOME) > 0);
 
   if (statusFlags.systemFlag) {
@@ -187,9 +187,9 @@ void Vista::onDisplay(char cbuf[], int * idx) {
   statusFlags.programMode = (cbuf[8] & BIT_MASK_BYTE3_PROGRAM);
 
   statusFlags.instant = ((cbuf[8] & BIT_MASK_BYTE3_INSTANT) > 0);
-  statusFlags.armedAway = ((cbuf[8] & BIT_MASK_BYTE3_ARMED_AWAY) > 0);  
+  statusFlags.armedAway = ((cbuf[8] & BIT_MASK_BYTE3_ARMED_AWAY) > 0);
 
-  
+
   if (!statusFlags.systemFlag) {
     statusFlags.alarm = ((cbuf[8] & BIT_MASK_BYTE3_ZONE_ALARM) > 0);
   }
@@ -232,7 +232,7 @@ int Vista::toDec(int n) {
  * It seems that, for trouble indicators (0x300 range) the qualifier is flipped
  * where 1 means "new" and 3 means "restored"
  * 0x48 is a startup sequence, the byte after 0x48 will be 00 01 02 03
- //1=new event or opening, 3=new restore or closing,6=previous still present 
+ //1=new event or opening, 3=new restore or closing,6=previous still present
  */
 void Vista::onLrr(char cbuf[], int * idx) {
 
@@ -265,7 +265,7 @@ void Vista::onLrr(char cbuf[], int * idx) {
 
     lcbuf[0] = (char)(cbuf[1]);
     lcbuflen++;
-  } else if (type == (char) 0x53){ 
+  } else if (type == (char) 0x53){
 
     lcbuf[0] = (char)((cbuf[1] + 0x40) & 0xFF);
     lcbuf[1] = (char) 0x04;
@@ -389,7 +389,7 @@ void Vista::onExp(char cbuf[]) {
     type = cbuf[5];
     for (idx = 0; idx < MAX_MODULES; idx++) {
       expansionAddr = zoneExpanders[idx].expansionAddr;
-      if (!expansionAddr) continue;      
+      if (!expansionAddr) continue;
       if (cbuf[2] == (0x01 << (expansionAddr - 13))) break; //for us - relay addresses 14-15
     }
 
@@ -397,7 +397,7 @@ void Vista::onExp(char cbuf[]) {
     for (idx = 0; idx < MAX_MODULES; idx++) {
       expansionAddr = zoneExpanders[idx].expansionAddr;
       if (!expansionAddr) continue;
-//outStream->printf("expander address=%d, cbuf=%d,decoded=%d\n",expansionAddr,cbuf[2],(0x01 << (expansionAddr - 6)));      
+//outStream->printf("expander address=%d, cbuf=%d,decoded=%d\n",expansionAddr,cbuf[2],(0x01 << (expansionAddr - 6)));
       if (cbuf[2] == (0x01 << (expansionAddr - 6))) break; //for us - address range 7 -13
     }
   }
@@ -423,7 +423,7 @@ void Vista::onExp(char cbuf[]) {
     lcbuf[1] = (char) expSeq;
     //lcbuf[2] = (char) currentFault.relayState;
     lcbuf[2] = 0;
-    lcbuf[3] = (char) currentFault.expFault; // we send out the current zone state 
+    lcbuf[3] = (char) currentFault.expFault; // we send out the current zone state
 
   } else if (type == 0xF7) { // periodic  zone state poll (every 30 seconds) expander
     lcbuflen = (char) 4;
@@ -431,7 +431,7 @@ void Vista::onExp(char cbuf[]) {
     lcbuf[1] = (char) expSeq;
     //lcbuf[2]= (char) expFaultBits ^ 0xFF; //closed zones - opposite of expfaultbits. If set in byte3 we clear here. (not used )
     lcbuf[2] = 0; // we simulate having a termination resistor so set to zero for all zones
-    lcbuf[3] = (char) expFaultBits; //opens zones - we send out the list of zone states. if 0 in both fields, means terminated 
+    lcbuf[3] = (char) expFaultBits; //opens zones - we send out the list of zone states. if 0 in both fields, means terminated
 
   } else if (type == 0x00 || type == 0x0D) { // relay module
     lcbuflen = (char) 4;
@@ -447,7 +447,7 @@ void Vista::onExp(char cbuf[]) {
     }
   } else {
     sending = false;
-    return; //we don't acknowledge if we don't know  //0x80 or 0x81 
+    return; //we don't acknowledge if we don't know  //0x80 or 0x81
   }
 
   delayMicroseconds(500);
@@ -554,12 +554,12 @@ void Vista::writeChars() {
   //  where YY is an incrementing sequence number
   //  and XX-XXXX is the keypad address (decimal 16-31)
   //vistaSerial->write(header);
-  //vistaSerial->write(outbufIdx +1); 
-  
+  //vistaSerial->write(outbufIdx +1);
+
    //adjust characters to hex values.
   //ASCII numbers get translated to hex numbers
   //# and * get converted to 0xA and 0xB
-  // send any other chars straight, although this will probably 
+  // send any other chars straight, although this will probably
   // result in errors
   //0xc = A (*/1), 0xd=B (*/#) , 0xe=C (3/#)
 
@@ -588,16 +588,16 @@ void Vista::writeChars() {
           //translate # to 0x0a
           if (c == 0x2A) {
             c = 0x0A;
-          } else 
+          } else
               if ( c==0x46) {// zone 95 (F)
                 c=0x0C;
-          } else 
+          } else
              if (c==0x4D) { //zone 99 (M)
                c=0x0D;
-           } else 
+           } else
                if ( c==0x50) { // zone 96 (P)
                c=0x0E;
-           } else 
+           } else
              if (c==0x47) {// zone 92 (G)
                     c=0x0F;
            } else
@@ -607,10 +607,10 @@ void Vista::writeChars() {
             //translate D to 0x1F (function key D)
             if (c >= 0x41 && c <= 0x44) {
               c = c - 0x25;
-            } 
+            }
       tmpOutBuf[tmpIdx++] = c;
     }
-    tmpOutBuf[0] = ((++writeSeq << 6) & 0xc0) | (ackAddr & 0x3F);  
+    tmpOutBuf[0] = ((++writeSeq << 6) & 0xc0) | (ackAddr & 0x3F);
     tmpOutBuf[1] = sz + 1;
   }
   vistaSerial -> setBaud(4800);
@@ -631,7 +631,7 @@ void Vista::writeChars() {
 }
 
 void IRAM_ATTR Vista::rxHandleISR() {
-  static byte b;    
+  static byte b;
   if (digitalRead(rxPin)) {
       if (lowTime)
           lowTime=micros() - lowTime;
@@ -642,20 +642,20 @@ void IRAM_ATTR Vista::rxHandleISR() {
         if (currentFault.expansionAddr && currentFault.expansionAddr < 24) {
           ackAddr = currentFault.expansionAddr; // use the expander address 07/08/09/10/11 as the requestor
            vistaSerial -> write(addrToBitmask1(ackAddr), false, 4800);
-           b = addrToBitmask2(ackAddr); 
+           b = addrToBitmask2(ackAddr);
            if (b) vistaSerial -> write(b, false, 4800);
-           b = addrToBitmask3(ackAddr); 
+           b = addrToBitmask3(ackAddr);
            if (b) vistaSerial -> write(b, false, 4800);
         } else if (outbufIdx != inbufIdx || retries > 0) {
           keyType c = outbuf[outbufIdx]; //get pending keypad address
           ackAddr=c.kpaddr;
           if (ackAddr && ackAddr < 24) {
            vistaSerial -> write(addrToBitmask1(ackAddr), false, 4800);
-           b = addrToBitmask2(ackAddr); 
+           b = addrToBitmask2(ackAddr);
            if (b) vistaSerial -> write(b, false, 4800);
-           b = addrToBitmask3(ackAddr); 
-           if (b) vistaSerial -> write(b, false, 4800);           
-          } 
+           b = addrToBitmask3(ackAddr);
+           if (b) vistaSerial -> write(b, false, 4800);
+          }
         }
         rxState = sPolling; // set flag to skip capturing pulses in the receive buffer during polling phase
       } else if ( lowTime > 4600 && rxState == sPolling) { // 2400 baud cmd preamble
@@ -665,13 +665,13 @@ void IRAM_ATTR Vista::rxHandleISR() {
       } else if (lowTime  > 3000 && rxState == sPolling) { // 4800 baud cmd preamble
         is2400 = false;
         markPulse = 4;
-        rxState = sNormal; // ok we have the message preamble. Lets start capturing receive bytes 
+        rxState = sNormal; // ok we have the message preamble. Lets start capturing receive bytes
       }
 
     lowTime = 0;
   } else {
     if (highTime && micros() - highTime > 6000 && rxState==sNormal)
-      rxState=sPolling;  
+      rxState=sPolling;
     if (rxState == sCmdHigh) // end 2400 baud cmd preamble
       rxState = sNormal;
     lowTime = micros();
@@ -707,7 +707,7 @@ bool Vista::validChksum(char cbuf[], int start, int len) {
 #ifdef MONITORTX
 bool Vista::decodePacket() {
   newExtCmd=false;
-  //format 0xFA deviceid subcommand channel on/off 
+  //format 0xFA deviceid subcommand channel on/off
   if (extcmd[0] == 0xFA) {
 
     if (!validChksum(extbuf, 0, 5)) {
@@ -813,7 +813,7 @@ bool Vista::decodePacket() {
     uint8_t n_rf_bytes = extbuf[1] >> 4;
 
     if (n_rf_bytes == 5) { // For monitoring, we only care about 5 byte messages since that contains data about sensors
-      // Verify data 
+      // Verify data
       uint16_t rf_checksum = 0;
       for (uint8_t i = 0; i < n_rf_bytes + 2 ; i++) {
         rf_checksum += extbuf[i];
@@ -857,7 +857,7 @@ bool Vista::decodePacket() {
         extcmd[4] = extbuf[4];
         extcmd[5] = extbuf[5];
         extcmd[6] = extbuf[6];
-        extcmd[12] = 0x73; //flag to identify cheksum failed             
+        extcmd[12] = 0x73; //flag to identify cheksum failed
         newExtCmd = true;
         return 1;
         // outStream->println("RF Checksum failed.");
@@ -908,7 +908,7 @@ bool Vista::getExtBytes() {
     if (decodePacket())
       ret = 1;
     extidx = 0;
-    memset(extbuf, 0, szExt); //clear buffer mem    
+    memset(extbuf, 0, szExt); //clear buffer mem
 
   }
 
@@ -933,12 +933,12 @@ bool Vista::handle() {
 
     x = vistaSerial -> read();
 
-    memset(cbuf, 0, szCbuf); //clear buffer mem  
-    
+    memset(cbuf, 0, szCbuf); //clear buffer mem
+
     if (expectByte && x) {
 
       if (x == expectByte) {
-        retries = 0;            
+        retries = 0;
         expectByte = 0;
         cbuf[0] = 0x78; //for flagging an expect byte found ok
         cbuf[1] = x;
@@ -947,7 +947,7 @@ bool Vista::handle() {
             //we did not get the expect byte response. So assume this byte is another cmd
       }
     }
-    
+
     //expander request command
     if (x == 0xFA) {
       vistaSerial -> setBaud(4800);
@@ -956,8 +956,8 @@ bool Vista::handle() {
       readChars(1,cbuf, & gidx); //01 ?
       readChars(1,cbuf, & gidx); //dev id or len code if &1
       readChars(1,cbuf, & gidx); // seq
-      readChars(1,cbuf, & gidx); // type 
-      if ((cbuf[2] & 1)) { // byte 2 = 01 if extended addressing for relay boards 14,15 so packet longer by 1 byte 
+      readChars(1,cbuf, & gidx); // type
+      if ((cbuf[2] & 1)) { // byte 2 = 01 if extended addressing for relay boards 14,15 so packet longer by 1 byte
         readChars(1,cbuf, & gidx); // extra byte
       } else if (cbuf[4] == 0x00 || cbuf[4] == 0x0D) { // 00 cmds use an extra byte
         readChars(1,cbuf, & gidx); //cmd
@@ -981,8 +981,8 @@ bool Vista::handle() {
 
       cbuf[gidx++] = x;
       readChars(F7_MESSAGE_LENGTH - 1, cbuf, & gidx);
-      int zidx=gidx;      
-      readChars(3,cbuf,&zidx);//clear following zeros   
+      int zidx=gidx;
+      readChars(3,cbuf,&zidx);//clear following zeros
       if (!validChksum(cbuf, 0, gidx))
         cbuf[12] = 0x77;
       else {
@@ -990,7 +990,7 @@ bool Vista::handle() {
         newCmd = true; //new valid cmd, process it
         gidx=0;
       }
-      return 1; // return 1 to log packet        
+      return 1; // return 1 to log packet
     }
 
     //Long Range Radio (LRR)
@@ -1001,7 +1001,7 @@ bool Vista::handle() {
       //read cycle
       readChars(1,cbuf, & gidx);
       //read len
-      readChars(1,cbuf, & gidx);      
+      readChars(1,cbuf, & gidx);
       readChars(cbuf[2], cbuf, & gidx);
       if (!validChksum(cbuf, 0, gidx))
         cbuf[12] = 0x77;
@@ -1069,9 +1069,9 @@ bool Vista::handle() {
       #ifdef MONITORTX
       memset(extcmd, 0, szExt); //store the previous panel sent data in extcmd buffer for later use
       memcpy(extcmd, cbuf, 2);
-      #endif      
+      #endif
       return 1;
-    }    
+    }
 
     //RF supervision
     if (x == 0xFB) {
@@ -1091,7 +1091,7 @@ bool Vista::handle() {
 
    //capture any unknown cmd byte if exits
       if (!x) return 0; //clear any stray zeros
-      gidx=0; 
+      gidx=0;
       cbuf[gidx++]=x;
       cbuf[12]=0x90;//possible ack byte or new unknown cmd
       unsigned long timeout = millis();
@@ -1159,7 +1159,7 @@ void Vista::begin(int receivePin, int transmitPin, char keypadAddr, int monitorT
     vistaSerial -> processSingle = true;
   }
   #ifdef MONITORTX
-    //interrupt for capturing keypad/module data on green transmit line  
+    //interrupt for capturing keypad/module data on green transmit line
   if (vistaSerialMonitor -> isValidGPIOpin(monitorPin)) {
     vistaSerialMonitor = new SoftwareSerial(monitorPin, -1, true, 10,100);
     vistaSerialMonitor -> begin(4800, SWSERIAL_8E2);

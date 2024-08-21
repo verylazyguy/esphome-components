@@ -44,7 +44,7 @@
 #define sPolling 5
 #define sCmdHigh 6
 
-    
+
 struct statusFlagType {
     char beeps: 3;
     bool armedStay;
@@ -119,7 +119,7 @@ class Vista {
     void write(const char * );
     void write(const char);
     void write(const char *,uint8_t addr );
-    void write(const char,uint8_t addr);    
+    void write(const char,uint8_t addr);
     statusFlagType statusFlags;
     SoftwareSerial * vistaSerial, * vistaSerialMonitor;
     void setKpAddr(char keypadAddr) {

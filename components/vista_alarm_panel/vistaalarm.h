@@ -110,54 +110,6 @@ enum sysState {
 };
 
 
-#if !defined(ARDUINO_MQTT)
-void publishBinaryState(const char * cstr,uint8_t partition,bool open) {
-  std::string str=cstr;
-  if (partition) str=str + std::to_string(partition);
-  std::vector<binary_sensor::BinarySensor *> bs = App.get_binary_sensors();
-  for (auto *obj : bs ) {
-#if defined(USE_CUSTOM_ID)
-    std::string id=obj->get_type_id();
-    if (id.compare(str) == 0){
-      obj->publish_state(open) ;
-      break;
-    } else {
-#endif
-        std::string name=obj->get_name();
-        if (name.find("(" + str + ")") != std::string::npos){
-            obj->publish_state(open) ;
-            break;;
-        }
-#if defined(USE_CUSTOM_ID)
-    }
-#endif
-  }
-}
-
-void publishTextState(const char * cstr,uint8_t partition,std::string * text) {
-  std::string str=cstr;
-  if (partition) str=str + std::to_string(partition);
- std::vector<text_sensor::TextSensor *> ts = App.get_text_sensors();
- for (auto *obj : ts ) {
-#if defined(USE_CUSTOM_ID)
-   std::string id=obj->get_type_id();
-   if (id.compare(str) ==0 ){
-    obj->publish_state(*text) ;
-    return;
-   } else {
-#endif
-     std::string name=obj->get_name();
-     if (name.find("(" + str + ")") != std::string::npos ){
-        obj->publish_state(*text) ;
-        return;
-     }
-#if defined(USE_CUSTOM_ID)
-    }
-#endif
- }
-}
-#endif
-
 #if defined(ESPHOME_MQTT)
 class vistaECPHome:  public time::RealTimeClock {
 #elif defined(ARDUINO_MQTT)
@@ -165,7 +117,8 @@ class vistaECPHome {
 #else
 class vistaECPHome: public api::CustomAPIDevice, public time::RealTimeClock {
 #endif
-    public: vistaECPHome(char kpaddr = KP_ADDR, int receivePin = RX_PIN, int transmitPin = TX_PIN, int monitorTxPin = MONITOR_PIN,int maxzones=MAX_ZONES,int maxpartitions=MAX_PARTITIONS):
+public:
+    vistaECPHome(char kpaddr = KP_ADDR, int receivePin = RX_PIN, int transmitPin = TX_PIN, int monitorTxPin = MONITOR_PIN,int maxzones=MAX_ZONES,int maxpartitions=MAX_PARTITIONS):
     keypadAddr1(kpaddr),
     rxPin(receivePin),
     txPin(transmitPin),
@@ -173,83 +126,117 @@ class vistaECPHome: public api::CustomAPIDevice, public time::RealTimeClock {
     maxZones(maxzones),
     maxPartitions(maxpartitions)
     {
-         partitionKeypads = new char[maxPartitions+1];
-         partitions = new uint8_t[maxPartitions];
-         partitionStates = new partitionStateType[maxPartitions];
+      partitionKeypads = new char[maxPartitions+1];
+      partitions = new uint8_t[maxPartitions];
+      partitionStates = new partitionStateType[maxPartitions];
 #if defined(ESPHOME_MQTT)
       vistaPtr=this;
       mqtt_callback=on_json_message;
 #endif
     }
 
+#if !defined(ARDUINO_MQTT)
+  void publishBinaryState(const char * cstr,uint8_t partition,bool open) {
+    std::string str=cstr;
+    if (partition) str=str + std::to_string(partition);
+    auto sensor = binarySensors.find(str);
+    if (sensor != binarySensors.end()) {
+      sensor->second->publish_state(open);
+    }
+  }
 
-    std:: function < void(int, std::string) > zoneStatusChangeCallback;
-    std:: function < void(int, bool) > zoneStatusChangeBinaryCallback;
-    std:: function < void(std::string, uint8_t) > systemStatusChangeCallback;
-    std:: function < void(sysState, bool, uint8_t) > statusChangeCallback;
+  void publishTextState(const char * cstr,uint8_t partition,std::string * text) {
+    std::string str=cstr;
+    if (partition) str=str + std::to_string(partition);
+    auto sensor = textSensors.find(str);
+    if (sensor != textSensors.end()) {
+      sensor->second->publish_state(*text);
+    }
+  }
+#endif
+
     std:: function < void(std::string , uint8_t) > systemMsgChangeCallback;
-    std:: function < void(std::string) > lrrMsgChangeCallback;
-    std:: function < void(std::string ) > rfMsgChangeCallback;
-    std:: function < void(std::string , uint8_t) > line1DisplayCallback;
-    std:: function < void(std::string , uint8_t) > line2DisplayCallback;
-    std:: function < void(std::string , uint8_t) > beepsCallback;
-    std:: function < void(std::string ) > zoneExtendedStatusCallback;
-    std:: function < void(uint8_t, int, bool) > relayStatusChangeCallback;
+    std::map<std::string, binary_sensor::BinarySensor *> binarySensors;
+    std::map<std::string, text_sensor::TextSensor *> textSensors;
 
-    void onZoneStatusChange(std:: function < void(int zone,
-     std::string msg) > callback) {
-      zoneStatusChangeCallback = callback;
+    void add_binary_sensor(const char *sensor_code) {
+      binarySensors[sensor_code] = NULL;
     }
-    void onZoneStatusChangeBinarySensor(std:: function < void(int zone,
-      bool open) > callback) {
-      zoneStatusChangeBinaryCallback = callback;
+    void add_text_sensor(const char *sensor_code) {
+      textSensors[sensor_code] = NULL;
     }
-    void onSystemStatusChange(std:: function < void(std::string status, uint8_t partition) > callback) {
-      systemStatusChangeCallback = callback;
+    void zoneStatusChangeCallback(int zone, std::string open) {
+      std::string sensor = "z" + std::to_string(zone);
+      publishTextState(sensor.c_str(), 0, &open);
     }
-    void onStatusChange(std:: function < void(sysState led, bool isOpen, uint8_t partition) > callback) {
-      statusChangeCallback = callback;
+    void zoneStatusChangeBinaryCallback(int zone, bool open) {
+      std::string sensor = "z" + std::to_string(zone);
+      publishBinaryState(sensor.c_str(), 0, open);
+    }
+    void systemStatusChangeCallback(std::string statusCode,uint8_t partition) {
+      publishTextState("ss_",partition,&statusCode);
+    }
+
+    void statusChangeCallback(alarm_panel::sysState led,bool open,uint8_t partition) {
+      std::string sensor="NIL";
+      switch(led) {
+                case alarm_panel::sfire: sensor="fire_";break;
+                case alarm_panel::salarm: sensor="alm_";break;
+                case alarm_panel::strouble: sensor="trbl_";break;
+                case alarm_panel::sarmedstay:sensor="arms_";break;
+                case alarm_panel::sarmedaway: sensor="arma_";break;
+                case alarm_panel::sinstant: sensor="armi_";break;
+                case alarm_panel::sready: sensor="rdy_";break;
+                case alarm_panel::sac: publishBinaryState("ac",0,open);return;
+                case alarm_panel::sbypass: sensor="byp_";break;
+                case alarm_panel::schime: sensor="chm_";break;
+                case alarm_panel::sbat: publishBinaryState("bat",0,open);return;
+                case alarm_panel::sarmednight: sensor="armn_";break;
+                case alarm_panel::sarmed: sensor="arm_";break;
+                case alarm_panel::soffline: break;
+                case alarm_panel::sunavailable: break;
+                default: break;
+         };
+      publishBinaryState(sensor.c_str(),partition,open);
     }
     void onSystemMsgChange(std:: function < void(std::string msg, uint8_t partition) > callback) {
       systemMsgChangeCallback = callback;
     }
-    void onLrrMsgChange(std:: function < void(std::string msg) > callback) {
-      lrrMsgChangeCallback = callback;
+    void lrrMsgChangeCallback(std::string msg) {
+      publishTextState("lrr",0,&msg);
     }
-    void onLine1DisplayChange(std:: function < void(std::string msg, uint8_t partition) > callback) {
-      line1DisplayCallback = callback;
+    void line1DisplayCallback(std::string msg,uint8_t partition) {
+      publishTextState("ln1_",partition,&msg);
     }
-    void onLine2DisplayChange(std:: function < void(std::string msg, uint8_t partition) > callback) {
-      line2DisplayCallback = callback;
+    void line2DisplayCallback(std::string msg,uint8_t partition) {
+      publishTextState("ln2_",partition,&msg);
     }
-    void onBeepsChange(std:: function < void(std::string beeps, uint8_t partition) > callback) {
-      beepsCallback = callback;
+    void beepsCallback(std::string  beeps,uint8_t partition) {
+      publishTextState("bp_",partition,&beeps);
     }
-    void onZoneExtendedStatusChange(std:: function < void(std::string zoneExtendedStatus) > callback) {
-      zoneExtendedStatusCallback = callback;
+    void zoneExtendedStatusCallback(std::string msg) {
+      publishTextState("zs",0,&msg);
     }
-    void onRelayStatusChange(std:: function < void(uint8_t addr, int channel, bool state) > callback) {
-      relayStatusChangeCallback = callback;
+    void relayStatusChangeCallback(uint8_t addr,int channel,bool open) {
+      std::string sensor = "r"+std::to_string(addr) + std::to_string(channel);
+      publishBinaryState(sensor.c_str(),0,open);
     }
-    void onRfMsgChange(std:: function < void(std::string msg) > callback) {
-      rfMsgChangeCallback = callback;
+    void rfMsgChangeCallback(std::string msg) {
+      publishTextState("rf",0,&msg);
     }
 
     void zoneStatusUpdate(int zone) {
       zoneType * zt=getZone(zone);
-      if (zoneStatusChangeCallback != NULL ) {
-          std::string msg,zs1;
-          zs1=zt->check?"T":zt->open?"O":"C";
-          msg = zt->bypass ? "B" : zt->alarm ? "A" : "";
-          zoneStatusChangeCallback(zone,msg.append(zs1).c_str());
-      }
 
-      if (zoneStatusChangeBinaryCallback != NULL ) {
-        if (zone <= maxZones)
-              zoneStatusChangeBinaryCallback(zone, zt->open ||  zt->check );
-         else
-            zoneStatusChangeBinaryCallback(zone,zt->check || zt->open || zt->alarm || zt->trouble);
-      }
+      std::string msg,zs1;
+      zs1=zt->check?"T":zt->open?"O":"C";
+      msg = zt->bypass ? "B" : zt->alarm ? "A" : "";
+      zoneStatusChangeCallback(zone,msg.append(zs1).c_str());
+
+      if (zone <= maxZones)
+        zoneStatusChangeBinaryCallback(zone, zt->open ||  zt->check );
+      else
+        zoneStatusChangeBinaryCallback(zone,zt->check || zt->open || zt->alarm || zt->trouble);
     }
     void set_accessCode(const char * ac) { accessCode=ac; }
     void set_rfSerialLookup(const char * rf) { rfSerialLookup=rf;}
@@ -258,7 +245,7 @@ class vistaECPHome: public api::CustomAPIDevice, public time::RealTimeClock {
     void set_lrrSupervisor(bool ls) { lrrSupervisor=ls;}
     void set_expanderAddr(uint8_t idx,uint8_t addr) { if (idx && idx < 10) expanderAddr[idx-1] = addr;}
     void set_maxZones(int mz) {maxZones=mz;}
-    void set_maxPartitions(uint8_t mp) { maxPartitions=mp;}
+    // void set_maxPartitions(uint8_t mp) { maxPartitions=mp;}
     void set_partitionKeypad(uint8_t idx,uint8_t addr) {if (idx && idx<4) partitionKeypads[idx]=addr;}
     void set_defaultPartition(uint8_t dp) {defaultPartition=dp;}
     void set_debug(uint8_t db) {debug=db;}
@@ -628,16 +615,35 @@ void setup() override {
       "fault"
   });
 
+  std::vector<text_sensor::TextSensor *> ts = App.get_text_sensors();
+  for (auto *obj : ts ) {
+    for (auto const& i : textSensors) {
+      std::string id = obj->get_type_id();
+      if (id.compare(i.first) == 0) {
+        textSensors[i.first] = obj;
+        break;
+      }
+    }
+  }
+  std::vector<binary_sensor::BinarySensor *> bs = App.get_binary_sensors();
+  for (auto *obj : bs ) {
+    for (auto const& i : binarySensors) {
+      std::string id = obj->get_type_id();
+      if (id.compare(i.first) == 0) {
+        binarySensors[i.first] = obj;
+        break;
+      }
+    }
+  }
+
 #endif
   systemStatusChangeCallback(STATUS_ONLINE, 1);
   statusChangeCallback(sac, true, 1);
   vista.begin(rxPin, txPin, keypadAddr1, monitorPin);
 
-  if (zoneStatusChangeBinaryCallback != NULL) {
-    for (int x = 1; x <= maxZones; x++) {
-      zoneStatusChangeBinaryCallback(x,false);
-      zoneStatusChangeCallback(x,"C");
-    }
+  for (int x = 1; x <= maxZones; x++) {
+    zoneStatusChangeBinaryCallback(x,false);
+    zoneStatusChangeCallback(x,"C");
   }
 
   firstRun = true;
@@ -701,7 +707,7 @@ void alarm_keypress_partition(std::string keystring, int partition) {
   const char * keys = strcpy(new char[keystring.length() + 1], keystring.c_str());
   if (!partition) partition = defaultPartition;
   if (debug > 0)
-    ESP_LOGV(TAG, "Writing keys: %s to partition %d", keystring.c_str(),partition);
+    ESP_LOGI(TAG, "Writing keys: %s to partition %d", keystring.c_str(),partition);
   uint8_t addr=0;
   if (partition > maxPartitions || partition < 1) return;
   addr=partitionKeypads[partition];
@@ -980,244 +986,256 @@ void update() override {
     vh = vista.handle();
   }
 
-  if (vista.keybusConnected && vh) {
-    if (debug > 0 && !vista.newExtCmd) {
-      printPacket("CMD", vista.cbuf, 13);
-    }
-    /*
-    //rf testing code
-    static unsigned long testtime=millis();
-    static char t1=0;
-    if (!vista.newExtCmd && millis() - testtime > 10000) {
-    //FB 04 06 18 98 B0 00 00 00 00 00 00
-    //0399512 b0
-    vista.newExtCmd=true;
-    vista.extcmd[0]=0xfb;
-    vista.extcmd[1]=4;
-    vista.extcmd[2]=6;
-    vista.extcmd[3]=0x18;
-    vista.extcmd[4]=0x98;
-    vista.extcmd[5]=0xb0;
-    if (t1==1) {
-    t1=2;
-    vista.extcmd[5]=0;
-    } else
-    if (t1==2) {
-    t1=0;
-    vista.extcmd[5]=0xb2;
-    } else
-    if (t1==0) t1=1;
-    testtime=millis();
-    }
-    */
-    static unsigned long refreshLrrTime,refreshRfTime;
-    //process ext messages for zones
-    if (vista.newExtCmd) {
-      if (debug > 0)
-        printPacket("EXT", vista.extcmd, 13);
-      vista.newExtCmd = false;
-      //format: [0xFA] [deviceid] [subcommand] [channel/zone] [on/off] [relaydata]
+  if (!vista.keybusConnected || !vh) {
+    return;
+  }
+  if (debug > 0 && !vista.newExtCmd) {
+    printPacket("CMD", vista.cbuf, 13);
+  }
+  /*
+  //rf testing code
+  static unsigned long testtime=millis();
+  static char t1=0;
+  if (!vista.newExtCmd && millis() - testtime > 10000) {
+  //FB 04 06 18 98 B0 00 00 00 00 00 00
+  //0399512 b0
+  vista.newExtCmd=true;
+  vista.extcmd[0]=0xfb;
+  vista.extcmd[1]=4;
+  vista.extcmd[2]=6;
+  vista.extcmd[3]=0x18;
+  vista.extcmd[4]=0x98;
+  vista.extcmd[5]=0xb0;
+  if (t1==1) {
+  t1=2;
+  vista.extcmd[5]=0;
+  } else
+  if (t1==2) {
+  t1=0;
+  vista.extcmd[5]=0xb2;
+  } else
+  if (t1==0) t1=1;
+  testtime=millis();
+  }
+  */
+  static unsigned long refreshLrrTime,refreshRfTime;
+  //process ext messages for zones
+  if (vista.newExtCmd) {
+    if (debug > 0)
+      printPacket("EXT", vista.extcmd, 13);
+    vista.newExtCmd = false;
+    //format: [0xFA] [deviceid] [subcommand] [channel/zone] [on/off] [relaydata]
 
-      if (vista.extcmd[0] == 0xFA) {
-        int z = vista.extcmd[3];
-        if (vista.extcmd[2] == 0xf1 && z > 0 && z <= maxZones) { // we have a zone status (zone expander address range)
+    if (vista.extcmd[0] == 0xFA) {
+      int z = vista.extcmd[3];
+      if (vista.extcmd[2] == 0xf1 && z > 0 && z <= maxZones) { // we have a zone status (zone expander address range)
+        zoneType * zt=getZone(z);
+        zt->time = millis();
+        zt->open = vista.extcmd[4];
+        zoneStatusUpdate(z);
+
+      } else if (vista.extcmd[2] == 0x00) { //relay update z = 1 to 4
+        if (z > 0) {
+          relayStatusChangeCallback(vista.extcmd[1], z, vista.extcmd[4] ? true : false);
+          if (debug > 0)
+            ESP_LOGD(TAG, "Got relay address %d channel %d = %d", vista.extcmd[1], z, vista.extcmd[4]);
+        }
+      } else if (vista.extcmd[2] == 0x0d) { //relay update z = 1 to 4 - 1sec on / 1 sec off
+        if (z > 0) {
+          // relayStatusChangeCallback(vista.extcmd[1],z,vista.extcmd[4]?true:false);
+          if (debug > 0)
+            ESP_LOGD(TAG, "Got relay address %d channel %d = %d. Cmd 0D. Pulsing 1sec on/ 1sec off", vista.extcmd[1], z, vista.extcmd[4]);
+        }
+      } else if (vista.extcmd[2] == 0xf7) { //30 second zone expander module status update
+        uint8_t faults = vista.extcmd[4];
+        for (int x = 8; x > 0; x--) {
+          z = getZoneFromChannel(vista.extcmd[1], x); //device id=extcmd[1]
+          if (!z) continue;
+          bool zs = faults & 1 ?true : false; //check first bit . lower bit = channel 8. High bit= channel 1
+          faults = faults >> 1; //get next zone status bit from field
           zoneType * zt=getZone(z);
+          if (zt->open != zs) {
+            zt->open = zs;
+            zoneStatusUpdate(z);
+          }
           zt->time = millis();
-          zt->open = vista.extcmd[4];
-          zoneStatusUpdate(z);
-
-        } else if (vista.extcmd[2] == 0x00) { //relay update z = 1 to 4
-          if (z > 0) {
-            relayStatusChangeCallback(vista.extcmd[1], z, vista.extcmd[4] ? true : false);
-            if (debug > 0)
-              ESP_LOGD(TAG, "Got relay address %d channel %d = %d", vista.extcmd[1], z, vista.extcmd[4]);
-          }
-        } else if (vista.extcmd[2] == 0x0d) { //relay update z = 1 to 4 - 1sec on / 1 sec off
-          if (z > 0) {
-            // relayStatusChangeCallback(vista.extcmd[1],z,vista.extcmd[4]?true:false);
-            if (debug > 0)
-              ESP_LOGD(TAG, "Got relay address %d channel %d = %d. Cmd 0D. Pulsing 1sec on/ 1sec off", vista.extcmd[1], z, vista.extcmd[4]);
-          }
-        } else if (vista.extcmd[2] == 0xf7) { //30 second zone expander module status update
-          uint8_t faults = vista.extcmd[4];
-          for (int x = 8; x > 0; x--) {
-            z = getZoneFromChannel(vista.extcmd[1], x); //device id=extcmd[1]
-            if (!z) continue;
-            bool zs = faults & 1 ?true : false; //check first bit . lower bit = channel 8. High bit= channel 1
-            faults = faults >> 1; //get next zone status bit from field
-            zoneType * zt=getZone(z);
-            if (zt->open != zs) {
-              zt->open = zs;
-              zoneStatusUpdate(z);
-            }
-            zt->time = millis();
-          }
         }
-      } else if (vista.extcmd[0] == 0xFB && vista.extcmd[1] == 4) {
-
-        char rf_serial_char[14];
-        char rf_serial_char_out[20];
-        //FB 04 06 18 98 B0 00 00 00 00 00 00
-        uint32_t device_serial = (vista.extcmd[2] << 16) + (vista.extcmd[3] << 8) + vista.extcmd[4];
-        sprintf(rf_serial_char, "%03d%04d", device_serial / 10000, device_serial % 10000);
-        serialType rf=getRfSerialLookup(rf_serial_char);
-        int z=rf.zone;
-
-        if (debug > 0) {
-          ESP_LOGI(TAG, "RFX: %s,%02x", rf_serial_char,vista.extcmd[5]);
-        }
-        if (z && !(vista.extcmd[5]&4) && !(vista.extcmd[5]&1)) { //ignore heartbeat
-          zoneType * zt=getZone(z);
-          zt->time = millis();
-          zt->open = vista.extcmd[5]&rf.mask?true:false;
-          zt->lowbat=vista.extcmd[5]&2?true:false; //low bat
-          zoneStatusUpdate(z);
-        }
-        sprintf(rf_serial_char_out,"%s,%02x",rf_serial_char,vista.extcmd[5]);
-        rfMsgChangeCallback(rf_serial_char);
-        refreshRfTime = millis();
-
       }
-      /* rf_serial_char
+    } else if (vista.extcmd[0] == 0xFB && vista.extcmd[1] == 4) {
 
-         1 - ? (loop flag?)
-         2 - Low battery
-         3 - Supervision required /heartbeat
-         4 - ?
-         5 - Loop 3
-         6 - Loop 2
-         7 - Loop 4
-         8 - Loop 1
+      char rf_serial_char[14];
+      char rf_serial_char_out[20];
+      //FB 04 06 18 98 B0 00 00 00 00 00 00
+      uint32_t device_serial = (vista.extcmd[2] << 16) + (vista.extcmd[3] << 8) + vista.extcmd[4];
+      sprintf(rf_serial_char, "%03d%04d", device_serial / 10000, device_serial % 10000);
+      serialType rf=getRfSerialLookup(rf_serial_char);
+      int z=rf.zone;
+
+      if (debug > 0) {
+        ESP_LOGI(TAG, "RFX: %s,%02x", rf_serial_char,vista.extcmd[5]);
+      }
+      if (z && !(vista.extcmd[5]&4) && !(vista.extcmd[5]&1)) { //ignore heartbeat
+        zoneType * zt=getZone(z);
+        zt->time = millis();
+        zt->open = vista.extcmd[5]&rf.mask?true:false;
+        zt->lowbat=vista.extcmd[5]&2?true:false; //low bat
+        zoneStatusUpdate(z);
+      }
+      sprintf(rf_serial_char_out,"%s,%02x",rf_serial_char,vista.extcmd[5]);
+      rfMsgChangeCallback(rf_serial_char);
+      refreshRfTime = millis();
+
+    }
+    /* rf_serial_char
+
+        1 - ? (loop flag?)
+        2 - Low battery
+        3 - Supervision required /heartbeat
+        4 - ?
+        5 - Loop 3
+        6 - Loop 2
+        7 - Loop 4
+        8 - Loop 1
 
 */
 
-    }
-    p1[0]='\0';
-    p2[0]='\0';
-    if (vista.cbuf[0] == 0xf7 && vista.newCmd) {
-      getPartitionsFromMask();
-      //translatePrompt(vista.statusFlags.prompt);
-      memcpy(p1, vista.statusFlags.prompt, 16);
-      memcpy(p2, & vista.statusFlags.prompt[16], 16);
-      p1[16] = '\0';
-      p2[16] = '\0';
+  }
+  p1[0]='\0';
+  p2[0]='\0';
+  if (vista.cbuf[0] == 0xf7 && vista.newCmd) {
+    getPartitionsFromMask();
+    //translatePrompt(vista.statusFlags.prompt);
+    memcpy(p1, vista.statusFlags.prompt, 16);
+    memcpy(p2, & vista.statusFlags.prompt[16], 16);
+    p1[16] = '\0';
+    p2[16] = '\0';
 
-      for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
-        if (partitions[partition - 1] ) {
-          forceRefresh=partitionStates[partition - 1].refreshStatus ;
-          ESP_LOGI(TAG, "Display to partition: %02X", partition);
-          if (partitionStates[partition - 1].lastp1 != p1 || forceRefresh)
-            line1DisplayCallback(p1, partition);
-          if (partitionStates[partition - 1].lastp2 != p2 || forceRefresh)
-            line2DisplayCallback(p2, partition);
-          if (partitionStates[partition - 1].lastbeeps != vista.statusFlags.beeps || forceRefresh ) {
-            char s[4];
-            itoa(vista.statusFlags.beeps,s,10);
-            beepsCallback(s, partition);
-          }
-          partitionStates[partition - 1].lastp1 = p1;
-          partitionStates[partition - 1].lastp2 = p2;
-          partitionStates[partition - 1].lastbeeps = vista.statusFlags.beeps;
-
-          if (strstr(vista.statusFlags.prompt, HITSTAR))
-            alarm_keypress_partition("*",partition);
+    bool changed = false;
+    for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
+      if (partitions[partition - 1] ) {
+        forceRefresh=partitionStates[partition - 1].refreshStatus ;
+        if (partitionStates[partition - 1].lastp1 != p1 || forceRefresh) {
+          line1DisplayCallback(p1, partition);
+          changed = true;
         }
+        if (partitionStates[partition - 1].lastp2 != p2 || forceRefresh) {
+          line2DisplayCallback(p2, partition);
+          changed = true;
+        }
+        if (partitionStates[partition - 1].lastbeeps != vista.statusFlags.beeps || forceRefresh ) {
+          char s[2];
+          s[0] = vista.statusFlags.beeps + '0';
+          s[1] = 0;
+          beepsCallback(s, partition);
+          changed = true;
+        }
+        partitionStates[partition - 1].lastp1 = p1;
+        partitionStates[partition - 1].lastp2 = p2;
+        partitionStates[partition - 1].lastbeeps = vista.statusFlags.beeps;
+
+        if (strstr(vista.statusFlags.prompt, HITSTAR))
+          alarm_keypress_partition("*",partition);
+        break;
       }
-      std::string s="";
-      //  if (!vista.statusFlags.systemFlag)
-      //  s=getF7Lookup(vista.cbuf);
-      ESP_LOGV(TAG, "Prompt: %s %s", p1,s.c_str());
-      ESP_LOGV(TAG, "Prompt: %s", p2);
-      ESP_LOGV(TAG, "Beeps: %d\n", vista.statusFlags.beeps);
+    }
+    //  if (!vista.statusFlags.systemFlag)
+    //  s=getF7Lookup(vista.cbuf);
+    if (changed) {
+      ESP_LOGD(TAG, "Display to partition: %02X", partition);
+      ESP_LOGD(TAG, "Prompt: %s", p1);
+      ESP_LOGD(TAG, "Prompt: %s", p2);
+      ESP_LOGD(TAG, "Beeps: %d\n", vista.statusFlags.beeps);
+    }
+  }
+
+
+  //publishes lrr status messages
+  if ((vista.cbuf[0] == 0xf9 && vista.cbuf[3] == 0x58 && vista.newCmd) || firstRun) { //we show all lrr messages with type 58
+    int c, q, z;
+
+    c = vista.statusFlags.lrr.code;
+    q = vista.statusFlags.lrr.qual;
+    z = vista.statusFlags.lrr.zone;
+
+
+    std::string qual;
+    if (c < 400)
+      qual = (q == 3) ? " Cleared" : "";
+    else if (c == 570)
+      qual = (q == 1) ? " Active" : " Cleared";
+    else
+      qual = (q == 1) ? " Restored" : "";
+    if (c) {
+      String lrrString = String(statusText(c));
+
+      char uflag = lrrString[0];
+      std::string uf = "user";
+      if (uflag == 'Z')
+        uf = "zone";
+      sprintf(msg, "%d: %s %s %d%s", c, & lrrString[1], uf.c_str(), z, qual.c_str());
+      lrrMsgChangeCallback(msg);
+      // id(lrrCode) = (c << 16) | (z << 8) | q; //store in persistant global storage
+      refreshLrrTime = millis();
     }
 
+  }
 
-    //publishes lrr status messages
-    if ((vista.cbuf[0] == 0xf9 && vista.cbuf[3] == 0x58 && vista.newCmd) || firstRun) { //we show all lrr messages with type 58
-      int c, q, z;
+  vista.newCmd = false;
 
-      c = vista.statusFlags.lrr.code;
-      q = vista.statusFlags.lrr.qual;
-      z = vista.statusFlags.lrr.zone;
+  // done other cmd processing.  Process f7 now
+  if (vista.cbuf[0] != 0xf7 ||  vista.cbuf[12]==0x77) return;
 
+  currentSystemState = sunavailable;
+  currentLightState.stay = false;
+  currentLightState.away = false;
+  currentLightState.night = false;
+  currentLightState.ready = false;
+  currentLightState.alarm = false;
+  currentLightState.armed = false;
+  currentLightState.ac = false;
+  // currentLightState.bat = false;
+  // currentLightState.trouble = false;
+  currentLightState.bypass = false;
+  currentLightState.chime = false;
 
-      std::string qual;
-      if (c < 400)
-        qual = (q == 3) ? " Cleared" : "";
-      else if (c == 570)
-        qual = (q == 1) ? " Active" : " Cleared";
-      else
-        qual = (q == 1) ? " Restored" : "";
-      if (c) {
-        String lrrString = String(statusText(c));
-
-        char uflag = lrrString[0];
-        std::string uf = "user";
-        if (uflag == 'Z')
-          uf = "zone";
-        sprintf(msg, "%d: %s %s %d%s", c, & lrrString[1], uf.c_str(), z, qual.c_str());
-        lrrMsgChangeCallback(msg);
-        // id(lrrCode) = (c << 16) | (z << 8) | q; //store in persistant global storage
-        refreshLrrTime = millis();
-      }
-
+  //armed status lights
+  if (vista.cbuf[0] == 0xf7 && vista.statusFlags.systemFlag && (vista.statusFlags.armedAway || vista.statusFlags.armedStay  )) {
+    if (vista.statusFlags.night) {
+      currentSystemState = sarmednight;
+      currentLightState.night = true;
+      currentLightState.stay = true;
+    } else if (vista.statusFlags.armedAway) {
+      currentSystemState = sarmedaway;
+      currentLightState.away = true;
+    } else {
+      currentSystemState = sarmedstay;
+      currentLightState.stay = true;
     }
+    currentLightState.armed = true;
+  }
 
-    vista.newCmd = false;
+  // Publishes ready status
+  if (vista.statusFlags.ready) {
+    currentSystemState = sdisarmed;
+    currentLightState.ready = true;
 
-    // done other cmd processing.  Process f7 now
-    if (vista.cbuf[0] != 0xf7 ||  vista.cbuf[12]==0x77) return;
+  }
 
-    currentSystemState = sunavailable;
-    currentLightState.stay = false;
-    currentLightState.away = false;
-    currentLightState.night = false;
-    currentLightState.ready = false;
-    currentLightState.alarm = false;
-    currentLightState.armed = false;
-    currentLightState.ac = false;
-    // currentLightState.bat = false;
-    // currentLightState.trouble = false;
-    currentLightState.bypass = false;
-    currentLightState.chime = false;
-
-    //armed status lights
-    if (vista.cbuf[0] == 0xf7 && vista.statusFlags.systemFlag && (vista.statusFlags.armedAway || vista.statusFlags.armedStay  )) {
-      if (vista.statusFlags.night) {
-        currentSystemState = sarmednight;
-        currentLightState.night = true;
-        currentLightState.stay = true;
-      } else if (vista.statusFlags.armedAway) {
-        currentSystemState = sarmedaway;
-        currentLightState.away = true;
-      } else {
-        currentSystemState = sarmedstay;
-        currentLightState.stay = true;
-      }
-      currentLightState.armed = true;
-    }
-
-    // Publishes ready status
-    if (vista.statusFlags.ready) {
-      currentSystemState = sdisarmed;
-      currentLightState.ready = true;
-
-    }
-
-    //zone fire status
-    //int tz;
-    if (vista.cbuf[0] == 0xf7 && !(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay ) && vista.statusFlags.fireZone) {
+  //zone fire status
+  //int tz;
+  if (vista.cbuf[0] == 0xf7) {
+    if (!(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay ) && vista.statusFlags.fireZone) {
       if (vista.cbuf[5] > 0x90) getZoneFromPrompt(p1);
       //if (promptContains(p1,FIRE,tz) && !vista.statusFlags.systemFlag) {
       fireStatus.zone = vista.statusFlags.zone;
       fireStatus.time = millis();
       fireStatus.state = true;
       getZone(vista.statusFlags.zone)->fire=true;
-      ESP_LOGD("test","fire found for zone %d,status=%d",vista.statusFlags.zone,fireStatus.state);
+      ESP_LOGD(TAG,"fire found for zone %d,status=%d",vista.statusFlags.zone,fireStatus.state);
 
     }
     //zone alarm status
-    if (vista.cbuf[0] == 0xf7 && !vista.statusFlags.systemFlag && vista.statusFlags.alarm) {
+    if (!vista.statusFlags.systemFlag && vista.statusFlags.alarm) {
       if (vista.cbuf[5] > 0x90) getZoneFromPrompt(p1);
       //if (promptContains(p1,ALARM,tz) && !vista.statusFlags.systemFlag) {
       zoneType * zt=getZone(vista.statusFlags.zone);
@@ -1230,10 +1248,10 @@ void update() override {
       alarmStatus.time = millis();
       alarmStatus.state = true;
       assignPartitionToZone(vista.statusFlags.zone);
-      ESP_LOGD("test","alarm found for zone %d,status=%d",vista.statusFlags.zone,zt->alarm );
+      ESP_LOGD(TAG,"alarm found for zone %d,status=%d",vista.statusFlags.zone,zt->alarm );
     }
     //device check status
-    if (vista.cbuf[0] == 0xf7 && !(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay ) && vista.statusFlags.check) {
+    if (!(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay ) && vista.statusFlags.check) {
       if (vista.cbuf[5] > 0x90) getZoneFromPrompt(p1);
       // if (promptContains(p1,CHECK,tz) || promptContains(p1,TRBL,tz)) {
       zoneType * zt=getZone(vista.statusFlags.zone);
@@ -1243,13 +1261,13 @@ void update() override {
         zt->open=false;
         zt->alarm=false;
         zoneStatusUpdate(vista.statusFlags.zone);
-        ESP_LOGD("test","check found for zone %d,status=%d",vista.statusFlags.zone,zt->check );
+        ESP_LOGD(TAG,"check found for zone %d,status=%d",vista.statusFlags.zone,zt->check );
       }
     }
 
     //zone fault status
-    // ESP_LOGD("test","armed status/system,stay,away flag is: %d , %d, %d , %d",vista.statusFlags.armed,vista.statusFlags.systemFlag,vista.statusFlags.armedStay,vista.statusFlags.armedAway);
-    if (vista.cbuf[0] == 0xf7 && !vista.statusFlags.systemFlag  && !vista.statusFlags.armedAway && !vista.statusFlags.armedStay && !vista.statusFlags.fire && !vista.statusFlags.check && !vista.statusFlags.alarm && !vista.statusFlags.bypass  ) {
+    // ESP_LOGD(TAG,"armed status/system,stay,away flag is: %d , %d, %d , %d",vista.statusFlags.armed,vista.statusFlags.systemFlag,vista.statusFlags.armedStay,vista.statusFlags.armedAway);
+    if (!vista.statusFlags.systemFlag  && !vista.statusFlags.armedAway && !vista.statusFlags.armedStay && !vista.statusFlags.fire && !vista.statusFlags.check && !vista.statusFlags.alarm && !vista.statusFlags.bypass  ) {
       if (vista.cbuf[5] > 0x90) getZoneFromPrompt(p1);
       // if (vista.statusFlags.zone==4) vista.statusFlags.zone=997;
       // if (promptContains(p1,FAULT,tz) && !vista.statusFlags.systemFlag) {
@@ -1258,12 +1276,12 @@ void update() override {
         zt->open=true;
         zoneStatusUpdate(vista.statusFlags.zone);
       }
-      ESP_LOGD("test","fault found for zone %d,status=%d",vista.statusFlags.zone,zt->open);
+      ESP_LOGD(TAG,"fault found for zone %d,status=%d",vista.statusFlags.zone,zt->open);
       zt->time = millis();
     }
 
     //zone bypass status
-    if (vista.cbuf[0] == 0xf7 && !(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay || vista.statusFlags.fire || vista.statusFlags.check || vista.statusFlags.alarm ) && vista.statusFlags.bypass) {
+    if (!(vista.statusFlags.systemFlag  || vista.statusFlags.armedAway || vista.statusFlags.armedStay || vista.statusFlags.fire || vista.statusFlags.check || vista.statusFlags.alarm ) && vista.statusFlags.bypass) {
       if (vista.cbuf[5] > 0x90) getZoneFromPrompt(p1);
       // if (promptContains(p1,BYPAS,tz) && !vista.statusFlags.systemFlag) {
       zoneType * zt=getZone(vista.statusFlags.zone);
@@ -1273,233 +1291,217 @@ void update() override {
       }
       zt->time = millis();
       assignPartitionToZone(vista.statusFlags.zone);
-      ESP_LOGD("test","bypass found for zone %d,status=%d",vista.statusFlags.zone,zt->bypass);
+      ESP_LOGD(TAG,"bypass found for zone %d,status=%d",vista.statusFlags.zone,zt->bypass);
     }
+  }
 
-    //trouble lights
-    if (!vista.statusFlags.acPower) {
-      currentLightState.ac = false;
-    } else currentLightState.ac = true;
+  //trouble lights
+  currentLightState.ac = !!vista.statusFlags.acPower;
 
-    if (vista.statusFlags.lowBattery  && vista.statusFlags.systemFlag) {
-      currentLightState.bat = true;
-      lowBatteryTime = millis();
+  if (vista.statusFlags.lowBattery  && vista.statusFlags.systemFlag) {
+    currentLightState.bat = true;
+    lowBatteryTime = millis();
+  }
+  // ESP_LOGE("info","ac=%d,batt status = %d,systemflag=%d,lightbat status=%d,trouble=%d", currentLightState.ac,vista.statusFlags.lowBattery,vista.statusFlags.systemFlag,currentLightState.bat,currentLightState.trouble);
+
+  if (vista.statusFlags.fire) {
+    currentLightState.fire = true;
+    currentSystemState = striggered;
+  } else currentLightState.fire = false;
+
+  if (vista.statusFlags.inAlarm) {
+    currentSystemState = striggered;
+    alarmStatus.zone = 99;
+    alarmStatus.time = millis();
+    alarmStatus.state = true;
+  }
+
+  currentLightState.chime = !!vista.statusFlags.chime;
+  currentLightState.instant = !!vista.statusFlags.entryDelay;
+  currentLightState.bypass = !!vista.statusFlags.bypass;
+  currentLightState.check = !!vista.statusFlags.fault;
+  currentLightState.instant = !!vista.statusFlags.instant;
+
+  //if ( vista.statusFlags.cancel ) {
+  //   currentLightState.canceled=true;
+  //}    else  currentLightState.canceled=false;
+
+  //clear alarm statuses  when timer expires
+  if ((millis() - fireStatus.time) > TTL) {
+    fireStatus.state = false;
+    if (fireStatus.zone > 0 && fireStatus.zone <=maxZones)
+      getZone(fireStatus.zone)->fire=false;
+  }
+  if ((millis() - alarmStatus.time) > TTL) {
+    alarmStatus.state = false;
+    if (alarmStatus.zone > 0 && alarmStatus.zone <=maxZones)
+      getZone(alarmStatus.zone)->alarm=false;
+  }
+  if ((millis() - panicStatus.time) > TTL) {
+    panicStatus.state = false;
+    if (panicStatus.zone > 0 && panicStatus.zone <=maxZones)
+      getZone(panicStatus.zone)->panic=false;
+  }
+  //  if ((millis() - systemPrompt.time) > TTL) systemPrompt.state = false;
+  if ((millis() - lowBatteryTime) > TTL) currentLightState.bat = false;
+
+  if  (!currentLightState.ac || currentLightState.bat )
+    currentLightState.trouble = true;
+  else
+    currentLightState.trouble = false;
+
+  currentLightState.alarm = alarmStatus.state;
+
+  for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
+    if ((partitions[partition - 1] && partitionTargets==1) && vista.statusFlags.systemFlag) {
+      //system status message
+      forceRefresh=partitionStates[partition - 1].refreshStatus ;;
+
+      if (currentSystemState != partitionStates[partition - 1].previousSystemState || forceRefresh)
+        switch (currentSystemState) {
+        case striggered:
+          systemStatusChangeCallback(STATUS_TRIGGERED, partition);
+          break;
+        case sarmedaway:
+          systemStatusChangeCallback(STATUS_ARMED, partition);
+          break;
+        case sarmednight:
+          systemStatusChangeCallback(STATUS_NIGHT, partition);
+          break;
+        case sarmedstay:
+          systemStatusChangeCallback(STATUS_STAY, partition);
+          break;
+        case sunavailable:
+          systemStatusChangeCallback(STATUS_NOT_READY, partition);
+          break;
+        case sdisarmed:
+          systemStatusChangeCallback(STATUS_OFF, partition);
+          break;
+        default:
+          systemStatusChangeCallback(STATUS_NOT_READY, partition);
+        }
+      partitionStates[partition - 1].previousSystemState = currentSystemState;
+      partitionStates[partition - 1].refreshStatus=false;
     }
-    // ESP_LOGE("info","ac=%d,batt status = %d,systemflag=%d,lightbat status=%d,trouble=%d", currentLightState.ac,vista.statusFlags.lowBattery,vista.statusFlags.systemFlag,currentLightState.bat,currentLightState.trouble);
-
-    if (vista.statusFlags.fire) {
-      currentLightState.fire = true;
-      currentSystemState = striggered;
-    } else currentLightState.fire = false;
-
-    if (vista.statusFlags.inAlarm) {
-      currentSystemState = striggered;
-      alarmStatus.zone = 99;
-      alarmStatus.time = millis();
-      alarmStatus.state = true;
-    }
-
-    if (vista.statusFlags.chime) {
-      currentLightState.chime = true;
-    } else currentLightState.chime = false;
-
-    if (vista.statusFlags.entryDelay) {
-      currentLightState.instant = true;
-    } else currentLightState.instant = false;
-
-    if (vista.statusFlags.bypass) {
-      currentLightState.bypass = true;
-    } else currentLightState.bypass = false;
-
-    if (vista.statusFlags.fault) {
-      currentLightState.check = true;
-    } else currentLightState.check = false;
-
-    if (vista.statusFlags.instant ) {
-      currentLightState.instant = true;
-    } else currentLightState.instant = false;
-
-    //if ( vista.statusFlags.cancel ) {
-    //   currentLightState.canceled=true;
-    //}    else  currentLightState.canceled=false;
-
-    //clear alarm statuses  when timer expires
-    if ((millis() - fireStatus.time) > TTL) {
-      fireStatus.state = false;
-      if (fireStatus.zone > 0 && fireStatus.zone <=maxZones)
-        getZone(fireStatus.zone)->fire=false;
-    }
-    if ((millis() - alarmStatus.time) > TTL) {
-      alarmStatus.state = false;
-      if (alarmStatus.zone > 0 && alarmStatus.zone <=maxZones)
-        getZone(alarmStatus.zone)->alarm=false;
-    }
-    if ((millis() - panicStatus.time) > TTL) {
-      panicStatus.state = false;
-      if (panicStatus.zone > 0 && panicStatus.zone <=maxZones)
-        getZone(panicStatus.zone)->panic=false;
-    }
-    //  if ((millis() - systemPrompt.time) > TTL) systemPrompt.state = false;
-    if ((millis() - lowBatteryTime) > TTL) currentLightState.bat = false;
-
-    if  (!currentLightState.ac || currentLightState.bat )
-      currentLightState.trouble = true;
-    else
-      currentLightState.trouble = false;
-
-    currentLightState.alarm = alarmStatus.state;
-
-    for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
-      if ((partitions[partition - 1] && partitionTargets==1) && vista.statusFlags.systemFlag) {
-        //system status message
-        forceRefresh=partitionStates[partition - 1].refreshStatus ;;
-
-        if (currentSystemState != partitionStates[partition - 1].previousSystemState || forceRefresh)
-          switch (currentSystemState) {
-          case striggered:
-            systemStatusChangeCallback(STATUS_TRIGGERED, partition);
-            break;
-          case sarmedaway:
-            systemStatusChangeCallback(STATUS_ARMED, partition);
-            break;
-          case sarmednight:
-            systemStatusChangeCallback(STATUS_NIGHT, partition);
-            break;
-          case sarmedstay:
-            systemStatusChangeCallback(STATUS_STAY, partition);
-            break;
-          case sunavailable:
-            systemStatusChangeCallback(STATUS_NOT_READY, partition);
-            break;
-          case sdisarmed:
-            systemStatusChangeCallback(STATUS_OFF, partition);
-            break;
-          default:
-            systemStatusChangeCallback(STATUS_NOT_READY, partition);
-          }
-        partitionStates[partition - 1].previousSystemState = currentSystemState;
-        partitionStates[partition - 1].refreshStatus=false;
-      }
-    }
+  }
 
 
-    for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
-      if ((partitions[partition - 1] && partitionTargets==1) ) {
+  for (uint8_t partition = 1; partition <= maxPartitions; partition++) {
+    if ((partitions[partition - 1] && partitionTargets==1) ) {
 
-        //publish status on change only - keeps api traffic down
-        previousLightState = partitionStates[partition - 1].previousLightState;
-        forceRefresh=partitionStates[partition - 1].refreshLights ;
+      //publish status on change only - keeps api traffic down
+      previousLightState = partitionStates[partition - 1].previousLightState;
+      forceRefresh=partitionStates[partition - 1].refreshLights ;
 
-        if (currentLightState.fire != previousLightState.fire || forceRefresh)
-          statusChangeCallback(sfire, currentLightState.fire, partition);
-        if (currentLightState.alarm != previousLightState.alarm || forceRefresh)
-          statusChangeCallback(salarm, currentLightState.alarm, partition);
-        if ((currentLightState.trouble != previousLightState.trouble || forceRefresh) )
-          statusChangeCallback(strouble, currentLightState.trouble, partition);
-        if (currentLightState.chime != previousLightState.chime || forceRefresh)
-          statusChangeCallback(schime, currentLightState.chime, partition);
-        //if (currentLightState.check != previousLightState.check || forceRefresh)
-        //  statusChangeCallback(scheck, currentLightState.check, partition);
-        if (((currentLightState.away != previousLightState.away)  && vista.statusFlags.systemFlag) || forceRefresh)
-          statusChangeCallback(sarmedaway, currentLightState.away, partition);
-        if (currentLightState.ac != previousLightState.ac || forceRefresh)
-          statusChangeCallback(sac, currentLightState.ac, partition);
-        if (((currentLightState.stay != previousLightState.stay ) && vista.statusFlags.systemFlag) || forceRefresh)
-          statusChangeCallback(sarmedstay, currentLightState.stay, partition);
-        if (((currentLightState.night != previousLightState.night ) && vista.statusFlags.systemFlag) || forceRefresh)
-          statusChangeCallback(sarmednight, currentLightState.night, partition);
-        if (((currentLightState.instant != previousLightState.instant ) && vista.statusFlags.systemFlag) || forceRefresh)
-          statusChangeCallback(sinstant, currentLightState.instant, partition);
-        if (currentLightState.bat != previousLightState.bat || forceRefresh  )
-          statusChangeCallback(sbat, currentLightState.bat, partition);
-        if (currentLightState.bypass != previousLightState.bypass || forceRefresh)
-          statusChangeCallback(sbypass, currentLightState.bypass, partition);
-        if (currentLightState.ready != previousLightState.ready || forceRefresh)
-          statusChangeCallback(sready, currentLightState.ready, partition);
-        if (((currentLightState.armed != previousLightState.armed ) && vista.statusFlags.systemFlag) || forceRefresh)
-          statusChangeCallback(sarmed, currentLightState.armed, partition);
-        //  if (currentLightState.canceled != previousLightState.canceled)
-        //   statusChangeCallback(scanceled,currentLightState.canceled,partition);
+      if (currentLightState.fire != previousLightState.fire || forceRefresh)
+        statusChangeCallback(sfire, currentLightState.fire, partition);
+      if (currentLightState.alarm != previousLightState.alarm || forceRefresh)
+        statusChangeCallback(salarm, currentLightState.alarm, partition);
+      if ((currentLightState.trouble != previousLightState.trouble || forceRefresh) )
+        statusChangeCallback(strouble, currentLightState.trouble, partition);
+      if (currentLightState.chime != previousLightState.chime || forceRefresh)
+        statusChangeCallback(schime, currentLightState.chime, partition);
+      //if (currentLightState.check != previousLightState.check || forceRefresh)
+      //  statusChangeCallback(scheck, currentLightState.check, partition);
+      if (((currentLightState.away != previousLightState.away)  && vista.statusFlags.systemFlag) || forceRefresh)
+        statusChangeCallback(sarmedaway, currentLightState.away, partition);
+      if (currentLightState.ac != previousLightState.ac || forceRefresh)
+        statusChangeCallback(sac, currentLightState.ac, partition);
+      if (((currentLightState.stay != previousLightState.stay ) && vista.statusFlags.systemFlag) || forceRefresh)
+        statusChangeCallback(sarmedstay, currentLightState.stay, partition);
+      if (((currentLightState.night != previousLightState.night ) && vista.statusFlags.systemFlag) || forceRefresh)
+        statusChangeCallback(sarmednight, currentLightState.night, partition);
+      if (((currentLightState.instant != previousLightState.instant ) && vista.statusFlags.systemFlag) || forceRefresh)
+        statusChangeCallback(sinstant, currentLightState.instant, partition);
+      if (currentLightState.bat != previousLightState.bat || forceRefresh  )
+        statusChangeCallback(sbat, currentLightState.bat, partition);
+      if (currentLightState.bypass != previousLightState.bypass || forceRefresh)
+        statusChangeCallback(sbypass, currentLightState.bypass, partition);
+      if (currentLightState.ready != previousLightState.ready || forceRefresh)
+        statusChangeCallback(sready, currentLightState.ready, partition);
+      if (((currentLightState.armed != previousLightState.armed ) && vista.statusFlags.systemFlag) || forceRefresh)
+        statusChangeCallback(sarmed, currentLightState.armed, partition);
+      //  if (currentLightState.canceled != previousLightState.canceled)
+      //   statusChangeCallback(scanceled,currentLightState.canceled,partition);
 
-        partitionStates[partition - 1].previousLightState = currentLightState;
-        partitionStates[partition - 1].refreshLights=false;
-
-      }
-    }
-
-    std::string zoneStatusMsg = "";
-    char s1[16];
-    //clears restored zones after timeout
-    for (auto  &x: extZones) {
-      if (!zoneActive(x.first)) continue;
-
-      if ( x.second.bypass && !partitionStates[ x.second.partition].previousLightState.bypass) {
-        x.second.bypass=false;
-      }
-
-      if ( x.second.alarm && !partitionStates[ x.second.partition].previousLightState.alarm) {
-        x.second.alarm=false;
-      }
-
-      if (! x.second.bypass && ( x.second.open || x.second.check) && (millis() -  x.second.time) > TTL ) {
-        x.second.open=false;
-        x.second.check=false;
-        zoneStatusUpdate(x.first);
-      }
-
-      if ( forceRefreshZones) {
-        zoneStatusUpdate(x.first);
-      }
-
-      if ( x.second.open) {
-        sprintf(s1, "OP:%d", x.first);
-        if (zoneStatusMsg != "") zoneStatusMsg.append(",");
-        zoneStatusMsg.append(s1);
-      }
-      if ( x.second.alarm) {
-        sprintf(s1, "AL:%d", x.first);
-        if (zoneStatusMsg != "") zoneStatusMsg.append(",");
-        zoneStatusMsg.append(s1);
-      }
-      if ( x.second.bypass) {
-        sprintf(s1, "BY:%d", x.first);
-        if (zoneStatusMsg != "") zoneStatusMsg.append(",");
-        zoneStatusMsg.append(s1);
-      }
-      if (x.second.check ) {
-        sprintf(s1, "CK:%d", x.first);
-        if (zoneStatusMsg != "") zoneStatusMsg.append(",");
-        zoneStatusMsg.append(s1);
-      }
-      if (x.second.lowbat ) { //low rf battery
-        sprintf(s1, "LB:%d", x.first);
-        if (zoneStatusMsg != "") zoneStatusMsg.append(",");
-        zoneStatusMsg.append(s1);
-      }
+      partitionStates[partition - 1].previousLightState = currentLightState;
+      partitionStates[partition - 1].refreshLights=false;
 
     }
+  }
 
-    if ((zoneStatusMsg != previousZoneStatusMsg  || forceRefreshZones) && zoneExtendedStatusCallback != NULL)
-      zoneExtendedStatusCallback(zoneStatusMsg);
-    previousZoneStatusMsg = zoneStatusMsg;
+  std::string zoneStatusMsg = "";
+  char s1[16];
+  //clears restored zones after timeout
+  for (auto  &x: extZones) {
+    if (!zoneActive(x.first)) continue;
 
-    if (millis() - refreshLrrTime > 30000) {
-      lrrMsgChangeCallback("");
-      refreshLrrTime = millis();
+    if ( x.second.bypass && !partitionStates[ x.second.partition].previousLightState.bypass) {
+      x.second.bypass=false;
     }
 
-    if (millis() - refreshRfTime > 30000) {
-      rfMsgChangeCallback("");
-      refreshRfTime = millis();
+    if ( x.second.alarm && !partitionStates[ x.second.partition].previousLightState.alarm) {
+      x.second.alarm=false;
     }
 
-    firstRun = false;
-    forceRefreshZones=false;
-    forceRefreshGlobal=false;
+    if (! x.second.bypass && ( x.second.open || x.second.check) && (millis() -  x.second.time) > TTL ) {
+      x.second.open=false;
+      x.second.check=false;
+      zoneStatusUpdate(x.first);
     }
 
-
+    if ( forceRefreshZones) {
+      zoneStatusUpdate(x.first);
     }
+
+    if ( x.second.open) {
+      sprintf(s1, "OP:%d", x.first);
+      if (zoneStatusMsg != "") zoneStatusMsg.append(",");
+      zoneStatusMsg.append(s1);
+    }
+    if ( x.second.alarm) {
+      sprintf(s1, "AL:%d", x.first);
+      if (zoneStatusMsg != "") zoneStatusMsg.append(",");
+      zoneStatusMsg.append(s1);
+    }
+    if ( x.second.bypass) {
+      sprintf(s1, "BY:%d", x.first);
+      if (zoneStatusMsg != "") zoneStatusMsg.append(",");
+      zoneStatusMsg.append(s1);
+    }
+    if (x.second.check ) {
+      sprintf(s1, "CK:%d", x.first);
+      if (zoneStatusMsg != "") zoneStatusMsg.append(",");
+      zoneStatusMsg.append(s1);
+    }
+    if (x.second.lowbat ) { //low rf battery
+      sprintf(s1, "LB:%d", x.first);
+      if (zoneStatusMsg != "") zoneStatusMsg.append(",");
+      zoneStatusMsg.append(s1);
+    }
+
+  }
+
+  if (zoneStatusMsg != previousZoneStatusMsg  || forceRefreshZones)
+    zoneExtendedStatusCallback(zoneStatusMsg);
+  previousZoneStatusMsg = zoneStatusMsg;
+
+  if (millis() - refreshLrrTime > 30000) {
+    lrrMsgChangeCallback("");
+    refreshLrrTime = millis();
+  }
+
+  if (millis() - refreshRfTime > 30000) {
+    rfMsgChangeCallback("");
+    refreshRfTime = millis();
+  }
+
+  firstRun = false;
+  forceRefreshZones=false;
+  forceRefreshGlobal=false;
+
+
+  }
     private:
     const __FlashStringHelper * statusText(int statusCode) {
       switch (statusCode) {

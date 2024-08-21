@@ -1,7 +1,9 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.components import binary_sensor, text_sensor
 from esphome.const import CONF_ID
 from esphome.core import CORE
+from esphome import pins
 import os
 import logging
 
@@ -40,121 +42,68 @@ CONF_FIRE="fire_text"
 CONF_CHECK="check_text"
 CONF_TRBL="trbl_text"
 CONF_HITSTAR="hitstar_text"
-
-systemstatus= '''[&](std::string statusCode,uint8_t partition) {
-      alarm_panel::publishTextState("ss_",partition,&statusCode); 
-    }'''
-line1 ='''[&](std::string msg,uint8_t partition) {
-      alarm_panel::publishTextState("ln1_",partition,&msg);
-    }'''
-line2='''[&](std::string msg,uint8_t partition) {
-      alarm_panel::publishTextState("ln2_",partition,&msg);
-    }'''
-beeps='''[&](std::string  beeps,uint8_t partition) {
-      alarm_panel::publishTextState("bp_",partition,&beeps); 
-    }'''
-zoneext='''[&](std::string msg) {
-      alarm_panel::publishTextState("zs",0,&msg);  
-    }'''
-lrr='''[&](std::string msg) {
-      alarm_panel::publishTextState("lrr",0,&msg);  
-    }''' 
-rf='''[&](std::string msg) {
-      alarm_panel::publishTextState("rf",0,&msg);  
-    }'''
-statuschange='''[&](alarm_panel::sysState led,bool open,uint8_t partition) {
-     std::string sensor="NIL";   
-      switch(led) {
-                case alarm_panel::sfire: sensor="fire_";break;
-                case alarm_panel::salarm: sensor="alm_";break;
-                case alarm_panel::strouble: sensor="trbl_";break;
-                case alarm_panel::sarmedstay:sensor="arms_";break;
-                case alarm_panel::sarmedaway: sensor="arma_";break;
-                case alarm_panel::sinstant: sensor="armi_";break; 
-                case alarm_panel::sready: sensor="rdy_";break; 
-                case alarm_panel::sac: alarm_panel::publishBinaryState("ac",0,open);return;       
-                case alarm_panel::sbypass: sensor="byp_";break;  
-                case alarm_panel::schime: sensor="chm_";break;
-                case alarm_panel::sbat: alarm_panel::publishBinaryState("bat",0,open);return;  
-                case alarm_panel::sarmednight: sensor="armn_";break;  
-                case alarm_panel::sarmed: sensor="arm_";break;  
-                case alarm_panel::soffline: break;       
-                case alarm_panel::sunavailable: break; 
-                default: break;
-         };
-      alarm_panel::publishBinaryState(sensor.c_str(),partition,open);
-    }'''
-zonebinary='''[&](int zone, bool open) {
-      std::string sensor = "z" + std::to_string(zone) ;
-      alarm_panel::publishBinaryState(sensor.c_str(),0,open);    
-    }'''
-zonestatus='''[&](int zone, std::string open) {
-      std::string sensor = "z" + std::to_string(zone);
-      alarm_panel::publishTextState(sensor.c_str(),0,&open); 
-    }''' 
-relay='''[&](uint8_t addr,int channel,bool open) {
-      std::string sensor = "r"+std::to_string(addr) + std::to_string(channel);
-      alarm_panel::publishBinaryState(sensor.c_str(),0,open);       
-    }'''
-
+CONF_BINARY_SENSORS="binary_sensors"
+CONF_TEXT_SENSORS="text_sensors"
 
 CONFIG_SCHEMA = cv.Schema(
     {
     cv.GenerateID(): cv.declare_id(Component),
     cv.Optional(CONF_ACCESSCODE): cv.string  ,
-    cv.Optional(CONF_MAXZONES): cv.int_, 
-    cv.Optional(CONF_MAXPARTITIONS): cv.int_, 
-    cv.Optional(CONF_RFSERIAL): cv.string, 
-    cv.Optional(CONF_DEFAULTPARTITION): cv.int_, 
-    cv.Optional(CONF_DEBUGLEVEL): cv.int_, 
-    cv.Optional(CONF_KEYPAD1): cv.int_, 
-    cv.Optional(CONF_KEYPAD2): cv.int_, 
-    cv.Optional(CONF_KEYPAD3): cv.int_, 
-    cv.Optional(CONF_RXPIN): cv.int_, 
-    cv.Optional(CONF_TXPIN): cv.int_, 
-    cv.Optional(CONF_MONITORPIN): cv.int_, 
-    cv.Optional(CONF_EXPANDER1): cv.int_, 
-    cv.Optional(CONF_EXPANDER2): cv.int_, 
-    cv.Optional(CONF_RELAY1): cv.int_, 
-    cv.Optional(CONF_RELAY2): cv.int_, 
-    cv.Optional(CONF_RELAY3): cv.int_, 
-    cv.Optional(CONF_RELAY4): cv.int_, 
-    cv.Optional(CONF_TTL): cv.int_, 
-    cv.Optional(CONF_QUICKARM): cv.boolean, 
-    cv.Optional(CONF_LRR): cv.boolean, 
-    cv.Optional(CONF_CLEAN,default='false'): cv.boolean,     
+    cv.Required(CONF_MAXZONES): cv.int_,
+    cv.Required(CONF_MAXPARTITIONS): cv.int_,
+    cv.Optional(CONF_RFSERIAL): cv.string,
+    cv.Optional(CONF_DEFAULTPARTITION): cv.int_,
+    cv.Optional(CONF_DEBUGLEVEL): cv.int_,
+    cv.Required(CONF_KEYPAD1): cv.int_,
+    cv.Optional(CONF_KEYPAD2): cv.int_,
+    cv.Optional(CONF_KEYPAD3): cv.int_,
+    cv.Required(CONF_RXPIN): pins.gpio_input_pin_schema,
+    cv.Required(CONF_TXPIN): pins.gpio_output_pin_schema,
+    cv.Required(CONF_MONITORPIN): cv.int_,
+    cv.Optional(CONF_EXPANDER1): cv.int_,
+    cv.Optional(CONF_EXPANDER2): cv.int_,
+    cv.Optional(CONF_RELAY1): cv.int_,
+    cv.Optional(CONF_RELAY2): cv.int_,
+    cv.Optional(CONF_RELAY3): cv.int_,
+    cv.Optional(CONF_RELAY4): cv.int_,
+    cv.Optional(CONF_TTL): cv.int_,
+    cv.Optional(CONF_QUICKARM): cv.boolean,
+    cv.Optional(CONF_LRR): cv.boolean,
+    cv.Optional(CONF_CLEAN,default='false'): cv.boolean,
     cv.Optional(CONF_FAULT): cv.string  ,
     cv.Optional(CONF_BYPASS): cv.string  ,
     cv.Optional(CONF_ALARM): cv.string  ,
-    cv.Optional(CONF_FIRE): cv.string  ,  
+    cv.Optional(CONF_FIRE): cv.string  ,
     cv.Optional(CONF_CHECK): cv.string  ,
-    cv.Optional(CONF_TRBL): cv.string  ,   
-    cv.Optional(CONF_HITSTAR): cv.string  ,    
+    cv.Optional(CONF_TRBL): cv.string  ,
+    cv.Optional(CONF_HITSTAR): cv.string  ,
+    cv.Optional(CONF_BINARY_SENSORS): cv.ensure_list(cv.string) ,
+    cv.Optional(CONF_TEXT_SENSORS): cv.ensure_list(cv.string) ,
     }
 )
 
 async def to_code(config):
     old_dir = CORE.relative_build_path("src")
-    cg.add_define("USE_CUSTOM_ID")    
+    cg.add_define("USE_CUSTOM_ID", 1)
     if config[CONF_CLEAN] or os.path.exists(old_dir+'/vistaalarm.h'):
         real_clean_build()
-    
-    var = cg.new_Pvariable(config[CONF_ID],config[CONF_KEYPAD1],config[CONF_RXPIN],config[CONF_TXPIN],config[CONF_MONITORPIN],config[CONF_MAXZONES],config[CONF_MAXPARTITIONS])
-    
+
+    var = cg.new_Pvariable(config[CONF_ID], config[CONF_KEYPAD1],
+                           config[CONF_RXPIN]["number"], config[CONF_TXPIN]["number"],
+                           config[CONF_MONITORPIN], config[CONF_MAXZONES], config[CONF_MAXPARTITIONS])
+
     if CONF_ACCESSCODE in config:
         cg.add(var.set_accessCode(config[CONF_ACCESSCODE]));
-    if CONF_MAXZONES in config:
-        cg.add(var.set_maxZones(config[CONF_MAXZONES]));
-    if CONF_MAXPARTITIONS in config:
-        cg.add(var.set_maxPartitions(config[CONF_MAXPARTITIONS]));
+    # if CONF_MAXZONES in config:
+    #     cg.add(var.set_maxZones(config[CONF_MAXZONES]));
+    # if CONF_MAXPARTITIONS in config:
+    #     cg.add(var.set_maxPartitions(config[CONF_MAXPARTITIONS]));
     if CONF_RFSERIAL in config:
         cg.add(var.set_rfSerialLookup(config[CONF_RFSERIAL]));
     if CONF_DEFAULTPARTITION in config:
         cg.add(var.set_defaultPartition(config[CONF_DEFAULTPARTITION]));
     if CONF_DEBUGLEVEL in config:
         cg.add(var.set_debug(config[CONF_DEBUGLEVEL]));
-    if CONF_KEYPAD1 in config:
-        cg.add(var.set_partitionKeypad(1,config[CONF_KEYPAD1]));
     if CONF_KEYPAD2 in config:
         cg.add(var.set_partitionKeypad(2,config[CONF_KEYPAD2]));
     if CONF_KEYPAD3 in config:
@@ -172,46 +121,40 @@ async def to_code(config):
     if CONF_RELAY4 in config:
         cg.add(var.set_expanderAddr(6,config[CONF_RELAY4]));
     if CONF_TTL in config:
-        cg.add(var.set_ttl(config[CONF_TTL]));        
+        cg.add(var.set_ttl(config[CONF_TTL]));
     if CONF_QUICKARM in config:
-        cg.add(var.set_quickArm(config[CONF_QUICKARM]));        
+        cg.add(var.set_quickArm(config[CONF_QUICKARM]));
     if CONF_LRR in config:
-        cg.add(var.set_lrrSupervisor(config[CONF_LRR]));      
+        cg.add(var.set_lrrSupervisor(config[CONF_LRR]));
 
     if CONF_FAULT in config:
-        cg.add(var.set_text(1,config[CONF_FAULT])); 
+        cg.add(var.set_text(1,config[CONF_FAULT]));
     if CONF_BYPASS in config:
-        cg.add(var.set_text(2,config[CONF_BYPASS])); 
+        cg.add(var.set_text(2,config[CONF_BYPASS]));
     if CONF_ALARM in config:
-        cg.add(var.set_text(3,config[CONF_ALARM])); 
+        cg.add(var.set_text(3,config[CONF_ALARM]));
     if CONF_FIRE in config:
-        cg.add(var.set_text(4,config[CONF_FIRE])); 
+        cg.add(var.set_text(4,config[CONF_FIRE]));
     if CONF_CHECK in config:
-        cg.add(var.set_text(5,config[CONF_CHECK])); 
+        cg.add(var.set_text(5,config[CONF_CHECK]));
     if CONF_TRBL in config:
-        cg.add(var.set_text(6,config[CONF_TRBL]));  
+        cg.add(var.set_text(6,config[CONF_TRBL]));
     if CONF_HITSTAR in config:
-        cg.add(var.set_text(7,config[CONF_HITSTAR]));         
-        
-    cg.add(var.onSystemStatusChange(cg.RawExpression(systemstatus)))   
-    cg.add(var.onLine1DisplayChange(cg.RawExpression(line1))) 
-    cg.add(var.onLine2DisplayChange(cg.RawExpression(line2)))    
-    cg.add(var.onBeepsChange(cg.RawExpression(beeps)))    
-    cg.add(var.onZoneExtendedStatusChange(cg.RawExpression(zoneext)))   
-    cg.add(var.onLrrMsgChange(cg.RawExpression(lrr))) 
-    cg.add(var.onRfMsgChange(cg.RawExpression(rf)))    
-    cg.add(var.onStatusChange(cg.RawExpression(statuschange)))    
-    cg.add(var.onZoneStatusChangeBinarySensor(cg.RawExpression(zonebinary)))    
-    cg.add(var.onZoneStatusChange(cg.RawExpression(zonestatus)))
-    cg.add(var.onRelayStatusChange(cg.RawExpression(relay)))      
-    
+        cg.add(var.set_text(7,config[CONF_HITSTAR]));
+    if CONF_BINARY_SENSORS in config:
+        for val in config[CONF_BINARY_SENSORS]:
+            cg.add(var.add_binary_sensor(val))
+    if CONF_TEXT_SENSORS in config:
+        for val in config[CONF_TEXT_SENSORS]:
+            cg.add(var.add_text_sensor(val))
+
     await cg.register_component(var, config)
-    
+
 def real_clean_build():
     import shutil
     build_dir = CORE.relative_build_path("")
     if os.path.isdir(build_dir):
         _LOGGER.info("Deleting %s", build_dir)
         shutil.rmtree(build_dir)
-            
-    
+
+
